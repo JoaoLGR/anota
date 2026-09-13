@@ -14,7 +14,9 @@ button { cursor: pointer; }
 .tiptap h2 { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 .6rem; }
 .tiptap h3 { font-size: 1.2rem; font-weight: 700; margin: 1rem 0 .5rem; }
 .tiptap p { margin: .65rem 0; }
-.tiptap ul, .tiptap ol { padding-left: 1.5rem; }
+.tiptap ul { list-style-type: disc; padding-left: 1.5rem; }
+.tiptap ol { list-style-type: decimal; padding-left: 1.5rem; }
+.tiptap li { padding-left: 0.25rem; }
 .tiptap blockquote { border-left: 3px solid #a78bfa; margin: 1rem 0; padding-left: 1rem; color: #71717a; }
 .tiptap hr { border: 0; border-top: 1px solid #e4e4e7; margin: 1.5rem 0; }
 .tiptap a { color: #7c3aed; text-decoration: underline; }
