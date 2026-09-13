@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body { margin: 0; background: #f6f4fa; color: #27272a; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.dark body { background: #18181b; color: #fafafa; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+@layer components { .icon-button { @apply inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl text-zinc-500 transition hover:bg-lilac-50 hover:text-lilac-600 focus:outline-none focus:ring-2 focus:ring-lilac-400 dark:hover:bg-zinc-700 dark:hover:text-lilac-400; } .panel { @apply border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900; } }
+.tiptap { min-height: 420px; outline: none; line-height: 1.75; }
+.tiptap h1 { font-size: 2rem; font-weight: 700; line-height: 1.2; margin: 1.5rem 0 .75rem; }
+.tiptap h2 { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 .6rem; }
+.tiptap h3 { font-size: 1.2rem; font-weight: 700; margin: 1rem 0 .5rem; }
+.tiptap p { margin: .65rem 0; }
+.tiptap ul, .tiptap ol { padding-left: 1.5rem; }
+.tiptap blockquote { border-left: 3px solid #a78bfa; margin: 1rem 0; padding-left: 1rem; color: #71717a; }
+.tiptap hr { border: 0; border-top: 1px solid #e4e4e7; margin: 1.5rem 0; }
+.tiptap a { color: #7c3aed; text-decoration: underline; }
