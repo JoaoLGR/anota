@@ -7,6 +7,12 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
   const client = createServerClient(url, key, { cookies: { getAll: () => request.cookies.getAll(), setAll: (cookies: { name: string; value: string; options: CookieOptions }[]) => cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options)) } });
   const { data: { user } } = await client.auth.getUser();
+  const isInviteCallback = request.nextUrl.searchParams.has("code") || request.nextUrl.searchParams.get("type") === "invite";
+  if (!user && isInviteCallback && request.nextUrl.pathname !== "/invite") {
+    const inviteUrl = new URL("/invite", request.url);
+    inviteUrl.search = request.nextUrl.search;
+    return NextResponse.redirect(inviteUrl);
+  }
   if (!user && !["/login", "/invite"].includes(request.nextUrl.pathname)) return NextResponse.redirect(new URL("/login", request.url));
   if (user && request.nextUrl.pathname === "/login") return NextResponse.redirect(new URL("/", request.url));
   return response;
