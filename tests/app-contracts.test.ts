@@ -24,6 +24,7 @@ describe("fluxos da aplicação", () => {
     expect(home).toContain('kind: "note-trash"');
     expect(home).toContain('kind: "note-delete"');
     expect(home).toContain('kind: "trash-empty"');
+    expect(home).toContain('kind: "logout"');
     expect(home).toContain("Não foi possível concluir essa ação");
     expect(source("components/editor.tsx")).toContain('saveState === "error"');
   });
@@ -35,7 +36,8 @@ describe("fluxos da aplicação", () => {
     expect(login).toContain("window.location.assign(next)");
     expect(invite).toContain("exchangeCodeForSession");
     expect(invite).toContain("updateUser");
-    expect(home).toContain("Deseja sair do ANOTA?");
+    expect(home).toContain('onClick={() => setDialog({ kind: "logout" })}');
+    expect(home).not.toContain("window.confirm");
     expect(home).toContain("expired=1");
   });
 

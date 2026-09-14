@@ -110,6 +110,7 @@ const seedNotes: Note[] = [
 
 type DialogState =
   | null
+  | { kind: "logout" }
   | { kind: "folder-create" }
   | { kind: "folder-edit"; folder: Folder }
   | { kind: "folder-delete"; folder: Folder }
@@ -432,7 +433,13 @@ export default function Home() {
     const current = dialog;
     if (!current) return;
     try {
-      if (current.kind === "folder-create") {
+      if (current.kind === "logout") {
+        if (supabase) {
+          const { error: signOutError } = await supabase.auth.signOut();
+          if (signOutError) throw signOutError;
+        }
+        goToLogin();
+      } else if (current.kind === "folder-create") {
         const name = values.name?.trim();
         if (!name) return;
         if (isSupabaseConfigured && supabase) {
@@ -645,11 +652,7 @@ export default function Home() {
           <span>Feito com o ❤️ © 2026</span>
           <button
             className="icon-button"
-            onClick={() => {
-              if (!window.confirm("Deseja sair do ANOTA?")) return;
-              if (supabase) void supabase.auth.signOut();
-              goToLogin();
-            }}
+            onClick={() => setDialog({ kind: "logout" })}
             aria-label="Sair"
             title="Sair"
           >
@@ -1034,7 +1037,9 @@ export default function Home() {
       {dialog && (
         <Dialog
           title={
-            dialog.kind === "folder-create"
+            dialog.kind === "logout"
+              ? "Sair do ANOTA"
+              : dialog.kind === "folder-create"
               ? "Nova pasta"
               : dialog.kind === "folder-edit"
                 ? "Editar pasta"
@@ -1047,7 +1052,9 @@ export default function Home() {
                       : "Excluir anotação definitivamente"
           }
           description={
-            dialog.kind === "folder-delete"
+            dialog.kind === "logout"
+              ? "Sua sessão será encerrada neste dispositivo."
+              : dialog.kind === "folder-delete"
               ? "As notas desta pasta serão mantidas sem pasta."
               : dialog.kind === "note-trash"
                 ? "A anotação poderá ser restaurada pela lixeira."
@@ -1100,13 +1107,16 @@ export default function Home() {
                 : []
           }
           confirmLabel={
-            dialog.kind === "folder-delete" || dialog.kind === "note-trash"
+            dialog.kind === "logout"
+              ? "Sair"
+              : dialog.kind === "folder-delete" || dialog.kind === "note-trash"
               ? "Mover para a lixeira"
               : dialog.kind === "trash-empty" || dialog.kind === "note-delete"
                 ? "Excluir definitivamente"
                 : "Salvar"
           }
           danger={
+            dialog.kind === "logout" ||
             dialog.kind === "folder-delete" ||
             dialog.kind === "note-trash" ||
             dialog.kind === "trash-empty" ||
