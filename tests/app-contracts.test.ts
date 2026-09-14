@@ -53,6 +53,8 @@ describe("fluxos da aplicação", () => {
     expect(home).toContain('aria-label="Pasta da anotação no celular"');
     expect(home).toContain('aria-label="Cor da nota no celular"');
     expect(home).toContain("!min-h-10 !min-w-10");
+    expect(home).toContain("right-4 z-[60]");
+    expect(home).not.toContain("left-1/2 z-[60]");
     expect(home).toContain('aria-current={active ? "page" : undefined}');
     expect(dialog).toContain('role={danger ? "alertdialog" : "dialog"}');
     expect(dialog).toContain('aria-describedby="dialog-description"');

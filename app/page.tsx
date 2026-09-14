@@ -1029,7 +1029,7 @@ export default function Home() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-1/2 z-[60] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl bg-zinc-900 px-4 py-3 text-center text-sm font-medium text-white shadow-lg dark:bg-white dark:text-zinc-900"
+          className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-4 z-[60] max-w-[calc(100vw-2rem)] rounded-xl bg-zinc-900 px-4 py-3 text-left text-sm font-medium text-white shadow-lg dark:bg-white dark:text-zinc-900"
         >
           {toast}
         </div>
