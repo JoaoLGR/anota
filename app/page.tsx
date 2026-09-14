@@ -140,6 +140,7 @@ export default function Home() {
   const [mobileEditor, setMobileEditor] = useState(false);
   const [noteMenuOpen, setNoteMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const noteActionsRef = useRef<HTMLDivElement>(null);
   const restoredSession = useRef(false);
   const goToLogin = useCallback((expired = false) => {
     sessionStorage.setItem(
@@ -270,6 +271,16 @@ export default function Home() {
     const timer = window.setTimeout(() => setToast(""), 3500);
     return () => window.clearTimeout(timer);
   }, [toast]);
+  useEffect(() => {
+    if (!noteMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!noteActionsRef.current?.contains(event.target as Node))
+        setNoteMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () =>
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [noteMenuOpen]);
   const visible = useMemo(
     () => filterNotes(notes, view, debouncedQuery),
     [notes, view, debouncedQuery],
@@ -810,7 +821,7 @@ export default function Home() {
                 {folders.find((folder) => folder.id === active.folderId)
                   ?.name || "Sem pasta"}
               </span>
-              <div className="ml-auto flex items-center gap-1">
+              <div ref={noteActionsRef} className="ml-auto flex items-center gap-1">
                 <select
                   aria-label="Pasta da anotação"
                   value={active.folderId || ""}

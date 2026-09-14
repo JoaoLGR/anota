@@ -39,6 +39,8 @@ describe("fluxos da aplicação", () => {
     expect(home).toContain('onClick={() => setDialog({ kind: "logout" })}');
     expect(home).not.toContain("window.confirm");
     expect(home).toContain("expired=1");
+    expect(home).toContain("closeOnOutsidePointer");
+    expect(home).toContain('document.addEventListener("pointerdown"');
   });
 
   it("preserva contratos responsivos e de acessibilidade", () => {
