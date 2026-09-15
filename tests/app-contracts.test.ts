@@ -82,4 +82,12 @@ describe("fluxos da aplicação", () => {
     expect(home).toContain("autoFocus={focusNewNoteId.current === active.id}");
     expect(editor).toContain("editor.commands.focus()");
   });
+
+  it("usa o voltar do navegador para sair do editor mobile antes da página", () => {
+    expect(home).toContain('window.history.pushState(');
+    expect(home).toContain('window.addEventListener("popstate", handlePopState)');
+    expect(home).toContain('window.matchMedia("(max-width: 899px)")');
+    expect(home).toContain("const closeMobileEditor = () =>");
+    expect(home).toContain("onClick={closeMobileEditor}");
+  });
 });

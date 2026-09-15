@@ -39,6 +39,7 @@ const folderIconOptions = folderIcons.map((icon) => ({
   ...icon,
   label: `${icon.value} ${icon.label}`,
 }));
+const MOBILE_EDITOR_HISTORY_KEY = "anotaMobileEditor";
 const seedFolders: Folder[] = [
   { id: "f1", name: "Faculdade", icon: "📚", color: "#8b5cf6", position: 0 },
   { id: "f2", name: "Projetos", icon: "💡", color: "#a78bfa", position: 1 },
@@ -155,6 +156,7 @@ export default function Home() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const noteActionsRef = useRef<HTMLDivElement>(null);
   const focusNewNoteId = useRef<string | null>(null);
+  const mobileEditorHistory = useRef(false);
   const restoredSession = useRef(false);
   const syncInFlight = useRef(false);
   const queueMutation = useCallback((mutation: OfflineMutation, notify = true) => {
@@ -359,6 +361,39 @@ export default function Home() {
     const offline = () => setIsOnline(false);
     window.addEventListener("online",online); window.addEventListener("offline",offline);
     return () => { window.removeEventListener("online",online); window.removeEventListener("offline",offline); };
+  }, []);
+  useEffect(() => {
+    const synchronizeEditorHistory = () => {
+      if (window.matchMedia("(max-width: 899px)").matches && mobileEditor) {
+        if (window.history.state?.[MOBILE_EDITOR_HISTORY_KEY]) {
+          mobileEditorHistory.current = true;
+          return;
+        }
+        window.history.pushState(
+          { ...window.history.state, [MOBILE_EDITOR_HISTORY_KEY]: true },
+          "",
+          window.location.href,
+        );
+        mobileEditorHistory.current = true;
+        return;
+      }
+      if (!mobileEditor && mobileEditorHistory.current && window.history.state?.[MOBILE_EDITOR_HISTORY_KEY])
+        window.history.back();
+    };
+    synchronizeEditorHistory();
+    window.addEventListener("resize", synchronizeEditorHistory);
+    return () => window.removeEventListener("resize", synchronizeEditorHistory);
+  }, [mobileEditor]);
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const wasInEditor = mobileEditorHistory.current;
+      const isEditorEntry = Boolean(event.state?.[MOBILE_EDITOR_HISTORY_KEY]);
+      mobileEditorHistory.current = isEditorEntry;
+      if (isEditorEntry) setMobileEditor(true);
+      else if (wasInEditor) setMobileEditor(false);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
   useEffect(() => { if (ready && isOnline && pendingSync) void syncPendingQueue(); }, [ready,isOnline,pendingSync,syncPendingQueue]);
   useEffect(() => {
@@ -716,6 +751,14 @@ export default function Home() {
     setDrawer(false);
     setNoteMenuOpen(false);
   };
+  const closeMobileEditor = () => {
+    if (mobileEditorHistory.current && window.history.state?.[MOBILE_EDITOR_HISTORY_KEY]) {
+      window.history.back();
+      return;
+    }
+    mobileEditorHistory.current = false;
+    setMobileEditor(false);
+  };
   return (
     <main className="flex min-h-[100dvh] overflow-hidden bg-[#f6f4fa] dark:bg-zinc-950">
       {(isSupabaseConfigured && (!isOnline || isSyncing || pendingSync > 0)) && (
@@ -959,7 +1002,7 @@ export default function Home() {
         <header className="relative flex min-h-[73px] shrink-0 items-center gap-3 border-b border-zinc-100 px-5 pt-[env(safe-area-inset-top)] dark:border-zinc-800">
           <button
             className="icon-button min-[900px]:hidden"
-            onClick={() => setMobileEditor(false)}
+            onClick={closeMobileEditor}
             aria-label="Voltar para notas"
           >
             <ChevronLeft size={22} />
