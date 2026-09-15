@@ -890,6 +890,7 @@ export default function Home() {
                 key={note.id}
                 onClick={() => {
                   setSelected(note.id);
+                  focusNewNoteId.current = null;
                   setMobileEditor(true);
                 }}
                 className={`mb-2 w-full rounded-2xl border border-transparent p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-lilac-400 ${selected === note.id ? "bg-lilac-50 ring-1 ring-lilac-200 dark:bg-lilac-500/15 dark:ring-lilac-500/30" : "hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
@@ -1181,7 +1182,16 @@ export default function Home() {
           )}
         </header>
         {active && (
-          <Editor key={active.id} note={active} onChange={updateNote} />
+          <Editor
+            key={active.id}
+            note={active}
+            onChange={updateNote}
+            autoFocus={focusNewNoteId.current === active.id}
+            onAutoFocus={() => {
+              if (focusNewNoteId.current === active.id)
+                focusNewNoteId.current = null;
+            }}
+          />
         )}
       </section>
       {toast && (

@@ -94,9 +94,15 @@ export function Editor({ note, onChange, autoFocus = false, onAutoFocus }: Edito
     if (editor && !editor.isFocused && editor.getHTML() !== note.content)
       editor.commands.setContent(note.content);
   }, [editor, note.id, note.content]);
+  useEffect(() => {
+    if (!editor || !autoFocus || didAutoFocus.current) return;
+    didAutoFocus.current = true;
+    editor.commands.focus();
+    onAutoFocus?.();
+  }, [editor, autoFocus, onAutoFocus]);
   useEffect(
     () => () => {
-      void saver.current.flush();
+      void saver.current.flush().catch(() => undefined);
     },
     [],
   );
