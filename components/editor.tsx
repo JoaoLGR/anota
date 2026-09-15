@@ -138,11 +138,11 @@ export function Editor({ note, onChange, autoFocus = false, onAutoFocus }: Edito
   );
 
   return (
-    <div className="relative flex min-w-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         role="toolbar"
         aria-label="Ferramentas de formatação"
-        className="sticky top-0 z-10 flex flex-wrap items-center gap-1 border-b border-zinc-100 bg-[#fdfcff]/95 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95"
+        className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-1 border-b border-zinc-100 bg-[#fdfcff]/95 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95"
       >
         <Tool
           label="Desfazer"
@@ -278,7 +278,7 @@ export function Editor({ note, onChange, autoFocus = false, onAutoFocus }: Edito
           )}
         </span>
       </div>
-      <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-6 pb-24 pt-6 sm:px-10 sm:pt-8">
+      <div className="mx-auto min-h-0 w-full max-w-3xl flex-1 overflow-y-auto overscroll-contain px-6 pb-24 pt-6 sm:px-10 sm:pt-8">
         <div className="border-b border-zinc-200/80 pb-4 dark:border-zinc-700/80">
           <input
             lang="pt-BR"

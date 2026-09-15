@@ -90,4 +90,12 @@ describe("fluxos da aplicação", () => {
     expect(home).toContain("const closeMobileEditor = () =>");
     expect(home).toContain("onClick={closeMobileEditor}");
   });
+
+  it("mantém a barra de formatação visível durante a rolagem da nota", () => {
+    const editor = source("components/editor.tsx");
+    expect(home).toContain("h-[100dvh]");
+    expect(editor).toContain("sticky top-0 z-20");
+    expect(editor).toContain("min-h-0 w-full max-w-3xl flex-1 overflow-y-auto");
+    expect(editor).toContain("overscroll-contain");
+  });
 });

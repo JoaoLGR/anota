@@ -760,7 +760,7 @@ export default function Home() {
     setMobileEditor(false);
   };
   return (
-    <main className="flex min-h-[100dvh] overflow-hidden bg-[#f6f4fa] dark:bg-zinc-950">
+    <main className="flex h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#f6f4fa] dark:bg-zinc-950">
       {(isSupabaseConfigured && (!isOnline || isSyncing || pendingSync > 0)) && (
         <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-2 text-center text-xs font-medium text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
           <span>{!isOnline ? "Offline — alterações salvas neste dispositivo" : isSyncing ? "Sincronizando alterações…" : `${pendingSync} alteração(ões) aguardando sincronização`}</span>
@@ -870,7 +870,7 @@ export default function Home() {
         />
       )}
       <section
-        className={`${mobileEditor ? "hidden min-[900px]:flex" : "flex"} w-full min-w-0 flex-col border-r border-zinc-200 bg-[#fcfbff] dark:border-zinc-800 dark:bg-zinc-900 min-[900px]:w-[330px] lg:ml-72 lg:w-[350px]`}
+        className={`${mobileEditor ? "hidden min-[900px]:flex" : "flex"} min-h-0 w-full min-w-0 flex-col border-r border-zinc-200 bg-[#fcfbff] dark:border-zinc-800 dark:bg-zinc-900 min-[900px]:w-[330px] lg:ml-72 lg:w-[350px]`}
       >
         <header className="flex items-center gap-3 border-b border-zinc-100 px-5 pb-5 pt-[calc(1.25rem+env(safe-area-inset-top))] dark:border-zinc-800">
           <button
@@ -997,7 +997,7 @@ export default function Home() {
         </div>
       </section>
       <section
-        className={`${mobileEditor ? "flex" : "hidden min-[900px]:flex"} min-w-0 flex-1 flex-col bg-[#fdfcff] dark:bg-zinc-950`}
+        className={`${mobileEditor ? "flex" : "hidden min-[900px]:flex"} min-h-0 min-w-0 flex-1 flex-col bg-[#fdfcff] dark:bg-zinc-950`}
       >
         <header className="relative flex min-h-[73px] shrink-0 items-center gap-3 border-b border-zinc-100 px-5 pt-[env(safe-area-inset-top)] dark:border-zinc-800">
           <button
