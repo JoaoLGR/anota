@@ -12,6 +12,7 @@ describe("fluxos da aplicação", () => {
   const dialog = source("components/dialog.tsx");
   const layout = source("app/layout.tsx");
   const styles = source("app/globals.css");
+  const middleware = source("middleware.ts");
 
   it("mantém os fluxos de criação/edição e troca rápida entre notas", () => {
     expect(home).toContain("async function newNote");
@@ -64,5 +65,21 @@ describe("fluxos da aplicação", () => {
     expect(dialog).toContain("overflow-y-auto");
     expect(login).toContain("min-h-[100dvh]");
     expect(invite).toContain("min-h-[100dvh]");
+  });
+
+  it("serve a camada offline sem redirecioná-la pela autenticação", () => {
+    expect(middleware).toContain("|sw.js|offline.html");
+    expect(source("app/page.tsx")).toContain('register("/sw.js")');
+    expect(source("public/sw.js")).toContain("CACHE_APP_SHELL");
+    expect(source("public/sw.js")).toContain("/_next/static/");
+  });
+
+  it("fecha a sidebar e foca o editor ao criar uma anotação", () => {
+    const createNote = home.slice(home.indexOf("async function newNote"), home.indexOf("async function moveFolder"));
+    const editor = source("components/editor.tsx");
+    expect(createNote).toContain("setDrawer(false)");
+    expect(createNote).toContain("setMobileEditor(true)");
+    expect(home).toContain("autoFocus={focusNewNoteId.current === active.id}");
+    expect(editor).toContain("editor.commands.focus()");
   });
 });

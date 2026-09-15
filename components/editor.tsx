@@ -11,6 +11,7 @@ import {
   CheckSquare,
   CircleAlert,
   CircleCheck,
+  CloudOff,
   Heading1,
   Heading2,
   Heading3,
@@ -32,31 +33,41 @@ import type { Note } from "@/lib/types";
 
 type EditorProps = {
   note: Note;
-  onChange: (patch: Partial<Note>) => void | Promise<void>;
+  autoFocus?: boolean;
+  onAutoFocus?: () => void;
+  onChange: (patch: Partial<Note>) =>
+    | void
+    | Promise<"synced" | "queued">;
 };
 
-export function Editor({ note, onChange }: EditorProps) {
+export function Editor({ note, onChange, autoFocus = false, onAutoFocus }: EditorProps) {
   const onChangeRef = useRef(onChange);
+  const didAutoFocus = useRef(false);
   onChangeRef.current = onChange;
   const [moreOpen, setMoreOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [saveState, setSaveState] = useState<
-    "idle" | "saving" | "saved" | "error"
+    "idle" | "saving" | "saved" | "queued" | "error"
   >("idle");
   const [title, setTitle] = useState(note.title);
   const saver = useRef(
     createDebouncedSaver<Note>(async (changes) => {
       try {
-        await onChangeRef.current(changes);
-        setSaveState("saved");
+        const result = await onChangeRef.current(changes);
+        setSaveState(result === "queued" ? "queued" : "saved");
       } catch {
         setSaveState("error");
+        throw new Error("Não foi possível salvar a anotação.");
       }
     }, 800),
   );
   const schedule = (patch: Partial<Note>) => {
     setSaveState("saving");
     saver.current.schedule(patch);
+  };
+  const retrySave = () => {
+    setSaveState("saving");
+    void saver.current.retry().catch(() => setSaveState("error"));
   };
   const editor = useEditor({
     extensions: [
@@ -239,13 +250,26 @@ export function Editor({ note, onChange }: EditorProps) {
           {saveState === "saving" && <LoaderCircle size={13} className="animate-spin" />}
           {saveState === "error" && <CircleAlert size={13} />}
           {saveState === "saved" && <CircleCheck size={13} />}
+          {saveState === "queued" && <CloudOff size={13} />}
           {saveState === "saving"
             ? "Salvando..."
             : saveState === "error"
               ? "Erro ao salvar"
               : saveState === "saved"
                 ? "Salvo ✓"
+                : saveState === "queued"
+                  ? "Salvo no dispositivo"
                 : "Pronto para editar"}
+          {saveState === "error" && (
+            <button
+              type="button"
+              className="ml-1 rounded-md px-2 py-1 font-semibold text-red-600 underline underline-offset-2 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40"
+              onClick={retrySave}
+              aria-label="Tentar salvar novamente"
+            >
+              Tentar novamente
+            </button>
+          )}
         </span>
       </div>
       <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-6 pb-24 pt-6 sm:px-10 sm:pt-8">

@@ -25,6 +25,15 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { filterNotes, permanentlyDeleteNote } from "@/lib/note-operations";
 import { createId } from "@/lib/id";
 import { folderIcons, pastelColors } from "@/lib/types";
+import {
+  countOfflineMutations,
+  enqueueOfflineMutation,
+  readOfflineQueue,
+  readWorkspaceCache,
+  removeOfflineMutation,
+  writeWorkspaceCache,
+  type OfflineMutation,
+} from "@/lib/offline-sync";
 
 const folderIconOptions = folderIcons.map((icon) => ({
   ...icon,
@@ -128,6 +137,10 @@ const read = <T,>(key: string, fallback: T): T => {
 export default function Home() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingSync, setPendingSync] = useState(0);
   const [view, setView] = useState<View>("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -141,7 +154,29 @@ export default function Home() {
   const [noteMenuOpen, setNoteMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
   const noteActionsRef = useRef<HTMLDivElement>(null);
+  const focusNewNoteId = useRef<string | null>(null);
   const restoredSession = useRef(false);
+  const syncInFlight = useRef(false);
+  const queueMutation = useCallback((mutation: OfflineMutation, notify = true) => {
+    const saved = enqueueOfflineMutation(mutation);
+    setPendingSync(countOfflineMutations(mutation.userId));
+    if (!saved) {
+      setToast("Não foi possível guardar a alteração neste dispositivo. Libere espaço e tente novamente.");
+      return false;
+    }
+    if (notify) setToast(navigator.onLine ? "Alteração salva e aguardando sincronização." : "Sem conexão. Alteração salva no dispositivo.");
+    return true;
+  }, []);
+  const queueOrThrow = (mutation: OfflineMutation) => {
+    if (!queueMutation(mutation)) throw new Error("offline-storage");
+  };
+  const isNetworkFailure = (error: unknown) => {
+    if (!navigator.onLine) return true;
+    if (typeof error === "object" && error !== null && "status" in error && Number((error as {status?:unknown}).status) >= 500) return true;
+    return /fetch|network|offline|connection|timeout/i.test(
+      error instanceof Error ? error.message : String(error),
+    );
+  };
   const goToLogin = useCallback((expired = false) => {
     sessionStorage.setItem(
       "anota-return-state",
@@ -170,46 +205,68 @@ export default function Home() {
           window.location.href = "/login?expired=1";
           return;
         }
-        const folderResult = await supabase
-          .from("folders")
-          .select("*")
-          .order("position");
-        const noteResult = await supabase
-          .from("notes")
-          .select("*")
-          .order("updated_at", { ascending: false });
-        if (folderResult.error || noteResult.error)
-          throw folderResult.error || noteResult.error;
-        if (cancelled) return;
-        setFolders(
-          (folderResult.data || []).map((folder) => ({
-            id: folder.id,
-            name: folder.name,
-            icon: folder.icon,
-            color: folder.color,
-            position: folder.position ?? 0,
-          })),
-        );
-        setNotes(
-          (noteResult.data || []).map((note) => ({
-            id: note.id,
-            title: note.title,
-            content:
-              typeof note.content === "object" &&
-              note.content !== null &&
-              "html" in note.content
-                ? (note.content as { html?: string }).html || "<p></p>"
-                : "<p></p>",
-            contentText: note.content_text,
-            folderId: note.folder_id,
-            color: note.color,
-            favorite: note.is_favorite,
-            pinned: note.is_pinned,
-            deletedAt: note.deleted_at,
-            updatedAt: note.updated_at,
-          })),
-        );
+        const activeUserId = session.user.id;
+        setUserId(activeUserId);
+        setIsOnline(navigator.onLine);
+        const cached = readWorkspaceCache(activeUserId);
+        const hasQueuedChanges = countOfflineMutations(activeUserId) > 0;
+        setPendingSync(countOfflineMutations(activeUserId));
+        if (cached && (!navigator.onLine || hasQueuedChanges)) {
+          if (cancelled) return;
+          setFolders(cached.folders);
+          setNotes(cached.notes);
+          if (!navigator.onLine) setToast("Offline: trabalhando com dados salvos neste dispositivo.");
+        } else {
+          try {
+            const folderResult = await supabase
+              .from("folders")
+              .select("*")
+              .order("position");
+            const noteResult = await supabase
+              .from("notes")
+              .select("*")
+              .order("updated_at", { ascending: false });
+            if (folderResult.error || noteResult.error)
+              throw folderResult.error || noteResult.error;
+            if (cancelled) return;
+            const loadedFolders = (folderResult.data || []).map((folder) => ({
+              id: folder.id,
+              name: folder.name,
+              icon: folder.icon,
+              color: folder.color,
+              position: folder.position ?? 0,
+            }));
+            const loadedNotes = (noteResult.data || []).map((note) => ({
+              id: note.id,
+              title: note.title,
+              content:
+                typeof note.content === "object" &&
+                note.content !== null &&
+                "html" in note.content
+                  ? (note.content as { html?: string }).html || "<p></p>"
+                  : "<p></p>",
+              contentText: note.content_text,
+              folderId: note.folder_id,
+              color: note.color,
+              favorite: note.is_favorite,
+              pinned: note.is_pinned,
+              deletedAt: note.deleted_at,
+              updatedAt: note.updated_at,
+            }));
+            setFolders(loadedFolders);
+            setNotes(loadedNotes);
+            writeWorkspaceCache(activeUserId, loadedFolders, loadedNotes);
+          } catch (loadError) {
+            if (!cached) throw loadError;
+            if (cancelled) return;
+            setFolders(cached.folders);
+            setNotes(cached.notes);
+            setIsOnline(false);
+          }
+        }
       } else {
+        setUserId("local");
+        setIsOnline(true);
         const localFolders = read("anota-folders", seedFolders);
         const localNotes = read("anota-notes", seedNotes);
         const demo =
@@ -241,6 +298,76 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+  const syncPendingQueue = useCallback(async () => {
+    if (!ready || !userId || userId === "local" || !supabase || !navigator.onLine || syncInFlight.current) return;
+    syncInFlight.current = true;
+    setIsSyncing(true);
+    try {
+      while (navigator.onLine) {
+        const mutation = readOfflineQueue(userId)[0];
+        if (!mutation) break;
+        let error: unknown = null;
+        if (mutation.kind === "note-create" || mutation.kind === "note-update") {
+          const n = mutation.note;
+          const payload = { title:n.title,color:n.color||null,content:{html:n.content},content_text:n.contentText,folder_id:n.folderId,is_favorite:n.favorite,is_pinned:n.pinned,deleted_at:n.deletedAt,updated_at:n.updatedAt };
+          const result = mutation.kind === "note-create"
+            ? await supabase.from("notes").upsert({ ...payload,id:n.id,user_id:userId },{onConflict:"id"})
+            : await supabase.from("notes").update(payload).eq("id",n.id).eq("user_id",userId);
+          error = result.error;
+        } else if (mutation.kind === "note-delete") {
+          error = (await supabase.from("notes").delete().eq("id",mutation.noteId).eq("user_id",userId)).error;
+        } else if (mutation.kind === "folder-create") {
+          error = (await supabase.from("folders").upsert({...mutation.folder,user_id:userId},{onConflict:"id"})).error;
+        } else if (mutation.kind === "folder-update") {
+          error = (await supabase.from("folders").update({name:mutation.folder.name,icon:mutation.folder.icon,color:mutation.folder.color,position:mutation.folder.position}).eq("id",mutation.folder.id).eq("user_id",userId)).error;
+        } else if (mutation.kind === "folder-delete") {
+          error = (await supabase.from("folders").delete().eq("id",mutation.folderId).eq("user_id",userId)).error;
+        } else if (mutation.kind === "folder-reorder") {
+          for (const folder of mutation.folders) {
+            const result = await supabase.from("folders").update({position:folder.position}).eq("id",folder.id).eq("user_id",userId);
+            if (result.error) { error = result.error; break; }
+          }
+        } else {
+          error = (await supabase.from("notes").delete().not("deleted_at","is",null).eq("user_id",userId)).error;
+        }
+        if (error) {
+          if (isNetworkFailure(error)) setIsOnline(false);
+          setToast("Não foi possível sincronizar alterações. Elas continuam salvas neste dispositivo.");
+          break;
+        }
+        removeOfflineMutation(userId,mutation.id);
+        setPendingSync(countOfflineMutations(userId));
+      }
+      if (countOfflineMutations(userId) === 0 && navigator.onLine) {
+        const [fr,nr] = await Promise.all([supabase.from("folders").select("*").order("position"),supabase.from("notes").select("*").order("updated_at",{ascending:false})]);
+        if (!fr.error && !nr.error) {
+          const fs = (fr.data||[]).map(f=>({id:f.id,name:f.name,icon:f.icon,color:f.color,position:f.position??0}));
+          const ns = (nr.data||[]).map(n=>({id:n.id,title:n.title,content:typeof n.content==="object"&&n.content!==null&&"html" in n.content?(n.content as {html?:string}).html||"<p></p>":"<p></p>",contentText:n.content_text,folderId:n.folder_id,color:n.color,favorite:n.is_favorite,pinned:n.is_pinned,deletedAt:n.deleted_at,updatedAt:n.updated_at}));
+          setFolders(fs); setNotes(ns); writeWorkspaceCache(userId,fs,ns);
+        }
+      }
+    } catch (error) {
+      if (isNetworkFailure(error)) setIsOnline(false);
+    } finally {
+      syncInFlight.current = false;
+      setIsSyncing(false);
+      setPendingSync(countOfflineMutations(userId));
+    }
+  }, [ready,userId]);
+  useEffect(() => {
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener("online",online); window.addEventListener("offline",offline);
+    return () => { window.removeEventListener("online",online); window.removeEventListener("offline",offline); };
+  }, []);
+  useEffect(() => { if (ready && isOnline && pendingSync) void syncPendingQueue(); }, [ready,isOnline,pendingSync,syncPendingQueue]);
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.register("/sw.js").then(async () => {
+      const registration = await navigator.serviceWorker.ready;
+      (navigator.serviceWorker.controller || registration.active)?.postMessage({type:"CACHE_APP_SHELL"});
+    }).catch(() => undefined);
+  }, []);
   useEffect(() => {
     if (!supabase) return;
     const {
@@ -251,9 +378,10 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, [goToLogin]);
   useEffect(() => {
+    if (ready && userId) writeWorkspaceCache(userId, folders, notes);
     if (ready && !isSupabaseConfigured)
       localStorage.setItem("anota-folders", JSON.stringify(folders));
-  }, [folders, ready]);
+  }, [folders, notes, ready, userId]);
   useEffect(() => {
     if (ready && !isSupabaseConfigured)
       localStorage.setItem("anota-notes", JSON.stringify(notes));
@@ -317,8 +445,8 @@ export default function Home() {
       setMobileEditor(false);
     }
   }, [selected, visible]);
-  async function updateNote(patch: Partial<Note>) {
-    if (!active) return;
+  async function updateNote(patch: Partial<Note>): Promise<"synced" | "queued"> {
+    if (!active) return "synced";
     const previous = active;
     const updated = {
       ...active,
@@ -329,25 +457,42 @@ export default function Home() {
       current.map((note) => (note.id === active.id ? updated : note)),
     );
     if (isSupabaseConfigured && supabase) {
-      const { error: updateError } = await supabase
-        .from("notes")
-        .update({
-          title: updated.title,
-          content: { html: updated.content },
-          content_text: updated.contentText,
-          color: updated.color || null,
-          folder_id: updated.folderId,
-          is_favorite: updated.favorite,
-          is_pinned: updated.pinned,
-          deleted_at: updated.deletedAt,
-          updated_at: updated.updatedAt,
-        })
-        .eq("id", updated.id);
-      if (updateError) {
+      if (!userId) throw new Error("Sessão indisponível para salvar offline.");
+      const hasPendingChanges = countOfflineMutations(userId) > 0;
+      const mutation: OfflineMutation = {id:createId(),kind:"note-update",userId,note:updated};
+      writeWorkspaceCache(userId,folders,notes.map((note)=>note.id===updated.id?updated:note));
+      if (!queueMutation(mutation,false)) {
+        setNotes((current)=>current.map((note)=>note.id===previous.id?previous:note));
+        writeWorkspaceCache(userId,folders,notes.map((note)=>note.id===previous.id?previous:note));
+        throw new Error("Não foi possível guardar a anotação localmente.");
+      }
+      if (!navigator.onLine || hasPendingChanges) {
+        return "queued";
+      }
+      syncInFlight.current = true;
+      try {
+        const { error: updateError } = await supabase.from("notes").update({
+          title: updated.title,content: { html: updated.content },content_text: updated.contentText,
+          color: updated.color || null,folder_id: updated.folderId,is_favorite: updated.favorite,
+          is_pinned: updated.pinned,deleted_at: updated.deletedAt,updated_at: updated.updatedAt,
+        }).eq("id", updated.id).eq("user_id", userId);
+        if (updateError) throw updateError;
+        removeOfflineMutation(userId,mutation.id);
+      } catch (updateError) {
+        if (isNetworkFailure(updateError)) {
+          setIsOnline(false);
+          setToast("Sem conexão. Alteração salva no dispositivo.");
+          return "queued";
+        }
+        removeOfflineMutation(userId,mutation.id);
         setNotes((current) =>
           current.map((note) => (note.id === previous.id ? previous : note)),
         );
+        writeWorkspaceCache(userId,folders,notes.map((note)=>note.id===previous.id?previous:note));
         throw updateError;
+      } finally {
+        syncInFlight.current = false;
+        setPendingSync(countOfflineMutations(userId));
       }
     }
     if ("favorite" in patch)
@@ -364,10 +509,11 @@ export default function Home() {
           ? "Anotação movida para a pasta."
           : "Anotação removida da pasta.",
       );
+    return isSupabaseConfigured ? "synced" : "synced";
   }
   async function newNote() {
     const folderId = view.startsWith("folder:") ? view.slice(7) : null;
-    let note: Note = {
+    const note: Note = {
       id: createId(),
       title: "",
       content: "<p></p>",
@@ -380,34 +526,59 @@ export default function Home() {
       updatedAt: new Date().toISOString(),
     };
     if (isSupabaseConfigured && supabase) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
+      if (!userId) {
         setError("Sessão expirada. Entre novamente.");
         return;
       }
-      const { data, error: insertError } = await supabase
-        .from("notes")
-        .insert({
-          user_id: user.id,
-          title: "",
-          color: null,
-          content: { html: "<p></p>" },
-          content_text: "",
-          folder_id: folderId,
-        })
-        .select()
-        .single();
-      if (insertError || !data) {
-        setError("Não foi possível criar a anotação.");
+      const hasPendingChanges = countOfflineMutations(userId) > 0;
+      const mutation: OfflineMutation = {id:createId(),kind:"note-create",userId,note};
+      setView(folderId ? `folder:${folderId}` : "all");
+      setNotes((current) => [note, ...current]);
+      setSelected(note.id);
+      focusNewNoteId.current = note.id;
+      setDrawer(false);
+      setMobileEditor(true);
+      writeWorkspaceCache(userId,folders,[note,...notes]);
+      if (!queueMutation(mutation,false)) {
+        setNotes((current)=>current.filter((item)=>item.id!==note.id));
+        writeWorkspaceCache(userId,folders,notes);
+        setSelected(null);
+        focusNewNoteId.current = null;
+        setMobileEditor(false);
         return;
       }
-      note = { ...note, id: data.id, updatedAt: data.updated_at };
+      if (!navigator.onLine || hasPendingChanges) return;
+      syncInFlight.current = true;
+      try {
+        const {error:insertError}=await supabase.from("notes").upsert({
+          id:note.id,user_id:userId,title:note.title,color:note.color,content:{html:note.content},content_text:note.contentText,folder_id:note.folderId,is_favorite:note.favorite,is_pinned:note.pinned,deleted_at:note.deletedAt,updated_at:note.updatedAt,
+        },{onConflict:"id"});
+        if(insertError) throw insertError;
+        removeOfflineMutation(userId,mutation.id);
+      } catch (insertError) {
+        if (isNetworkFailure(insertError)) {
+          setIsOnline(false);
+          setToast("Sem conexão. Anotação salva neste dispositivo.");
+          return;
+        }
+        removeOfflineMutation(userId,mutation.id);
+        setNotes((current)=>current.filter((item)=>item.id!==note.id));
+        writeWorkspaceCache(userId,folders,notes);
+        setSelected(null);
+        focusNewNoteId.current = null;
+        setMobileEditor(false);
+        setError("Não foi possível criar a anotação.");
+      } finally {
+        syncInFlight.current=false;
+        setPendingSync(countOfflineMutations(userId));
+      }
+      return;
     }
     setView(folderId ? `folder:${folderId}` : "all");
     setNotes((current) => [note, ...current]);
     setSelected(note.id);
+    focusNewNoteId.current = note.id;
+    setDrawer(false);
     setMobileEditor(true);
   }
   async function moveFolder(sourceId: string, targetId: string) {
@@ -424,6 +595,10 @@ export default function Home() {
     }));
     setFolders(positioned);
     if (isSupabaseConfigured && supabase) {
+      if (!navigator.onLine || countOfflineMutations(userId || "") > 0) {
+        if (userId && !queueMutation({id:createId(),kind:"folder-reorder",userId,folders:positioned.map(({id,position})=>({id,position:position||0}))})) setFolders(folders);
+        return;
+      }
       const client = supabase;
       const results = await Promise.all(
         positioned.map((folder) =>
@@ -434,7 +609,11 @@ export default function Home() {
         ),
       );
       if (results.some((result) => result.error)) {
-        setToast("Não foi possível salvar a ordem das pastas.");
+        const failed = results.find((result)=>result.error)?.error;
+        if (isNetworkFailure(failed) && userId) {
+          if (!queueMutation({id:createId(),kind:"folder-reorder",userId,folders:positioned.map(({id,position})=>({id,position:position||0}))})) setFolders(folders);
+        }
+        else setToast("Não foi possível salvar a ordem das pastas.");
         return;
       }
     }
@@ -453,56 +632,26 @@ export default function Home() {
       } else if (current.kind === "folder-create") {
         const name = values.name?.trim();
         if (!name) return;
-        if (isSupabaseConfigured && supabase) {
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
-          if (!user) throw new Error("session");
-          const { data, error: insertError } = await supabase
-            .from("folders")
-            .insert({
-              user_id: user.id,
-              name,
-              icon: values.icon || "📁",
-              color: values.color?.trim() || "#8b5cf6",
-              position: folders.length,
-            })
-            .select()
-            .single();
-          if (insertError || !data) throw insertError || new Error("folder");
-          setFolders((items) => [
-            ...items,
-            {
-              id: data.id,
-              name: data.name,
-              icon: data.icon,
-              color: data.color,
-              position: items.length,
-            },
-          ]);
-        } else
-          setFolders((items) => [
-            ...items,
-            {
-              id: createId(),
-              name,
-              icon: values.icon || "📁",
-              color: values.color?.trim() || "#8b5cf6",
-              position: items.length,
-            },
-          ]);
+        const folder: Folder = {id:createId(),name,icon:values.icon||"📁",color:values.color?.trim()||"#8b5cf6",position:folders.length};
+        if (isSupabaseConfigured && supabase && userId) {
+          if (!navigator.onLine || pendingSync) queueOrThrow({id:createId(),kind:"folder-create",userId,folder});
+          else {
+            const {error:insertError}=await supabase.from("folders").insert({...folder,user_id:userId});
+            if (insertError && isNetworkFailure(insertError)) queueOrThrow({id:createId(),kind:"folder-create",userId,folder});
+            else if (insertError) throw insertError;
+          }
+        }
+        setFolders(items=>[...items,{...folder,position:items.length}]);
         setToast("Pasta criada.");
       } else if (current.kind === "folder-edit") {
         const name = values.name?.trim();
         if (!name) return;
         const icon = values.icon?.trim() || current.folder.icon;
         const color = values.color?.trim() || "#8b5cf6";
-        if (isSupabaseConfigured && supabase) {
-          const { error: updateError } = await supabase
-            .from("folders")
-            .update({ name, icon, color })
-            .eq("id", current.folder.id);
-          if (updateError) throw updateError;
+        const folder={...current.folder,name,icon,color};
+        if (isSupabaseConfigured && supabase && userId) {
+          if (!navigator.onLine || pendingSync) queueOrThrow({id:createId(),kind:"folder-update",userId,folder});
+          else { const {error:updateError}=await supabase.from("folders").update({name,icon,color}).eq("id",folder.id).eq("user_id",userId); if(updateError&&isNetworkFailure(updateError)) queueOrThrow({id:createId(),kind:"folder-update",userId,folder}); else if(updateError) throw updateError; }
         }
         setFolders((items) =>
           items.map((folder) =>
@@ -513,12 +662,9 @@ export default function Home() {
         );
         setToast("Pasta atualizada.");
       } else if (current.kind === "folder-delete") {
-        if (isSupabaseConfigured && supabase) {
-          const { error: deleteError } = await supabase
-            .from("folders")
-            .delete()
-            .eq("id", current.folder.id);
-          if (deleteError) throw deleteError;
+        if (isSupabaseConfigured && supabase && userId) {
+          if (!navigator.onLine || pendingSync) queueOrThrow({id:createId(),kind:"folder-delete",userId,folderId:current.folder.id});
+          else { const {error:deleteError}=await supabase.from("folders").delete().eq("id",current.folder.id).eq("user_id",userId); if(deleteError&&isNetworkFailure(deleteError)) queueOrThrow({id:createId(),kind:"folder-delete",userId,folderId:current.folder.id}); else if(deleteError) throw deleteError; }
         }
         setFolders((items) =>
           items.filter((folder) => folder.id !== current.folder.id),
@@ -538,24 +684,18 @@ export default function Home() {
         setMobileEditor(false);
         setToast("Anotação movida para a lixeira.");
       } else if (current.kind === "note-delete") {
-        if (isSupabaseConfigured && supabase) {
-          const { error: deleteError } = await supabase
-            .from("notes")
-            .delete()
-            .eq("id", current.noteId);
-          if (deleteError) throw deleteError;
+        if (isSupabaseConfigured && supabase && userId) {
+          if (!navigator.onLine || pendingSync) queueOrThrow({id:createId(),kind:"note-delete",userId,noteId:current.noteId});
+          else { const {error:deleteError}=await supabase.from("notes").delete().eq("id",current.noteId).eq("user_id",userId); if(deleteError&&isNetworkFailure(deleteError)) queueOrThrow({id:createId(),kind:"note-delete",userId,noteId:current.noteId}); else if(deleteError) throw deleteError; }
         }
         setNotes((items) => permanentlyDeleteNote(items, current.noteId));
         setSelected(null);
         setMobileEditor(false);
         setToast("Anotação excluída definitivamente.");
       } else {
-        if (isSupabaseConfigured && supabase && trashCount) {
-          const { error: deleteError } = await supabase
-            .from("notes")
-            .delete()
-            .not("deleted_at", "is", null);
-          if (deleteError) throw deleteError;
+        if (isSupabaseConfigured && supabase && userId && trashCount) {
+          if (!navigator.onLine || pendingSync) queueOrThrow({id:createId(),kind:"trash-empty",userId});
+          else { const {error:deleteError}=await supabase.from("notes").delete().not("deleted_at","is",null).eq("user_id",userId); if(deleteError&&isNetworkFailure(deleteError)) queueOrThrow({id:createId(),kind:"trash-empty",userId}); else if(deleteError) throw deleteError; }
         }
         setNotes((items) => items.filter((note) => !note.deletedAt));
         setSelected(null);
@@ -563,8 +703,10 @@ export default function Home() {
         setToast("Lixeira esvaziada.");
       }
       setDialog(null);
-    } catch {
-      setToast("Não foi possível concluir essa ação. Tente novamente.");
+    } catch (actionError) {
+      setToast(actionError instanceof Error && actionError.message === "offline-storage"
+        ? "Não foi possível salvar a alteração neste dispositivo. Libere espaço e tente novamente."
+        : "Não foi possível concluir essa ação. Tente novamente.");
     }
   }
   if (!ready) return <Loading />;
@@ -576,6 +718,12 @@ export default function Home() {
   };
   return (
     <main className="flex min-h-[100dvh] overflow-hidden bg-[#f6f4fa] dark:bg-zinc-950">
+      {(isSupabaseConfigured && (!isOnline || isSyncing || pendingSync > 0)) && (
+        <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-2 text-center text-xs font-medium text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
+          <span>{!isOnline ? "Offline — alterações salvas neste dispositivo" : isSyncing ? "Sincronizando alterações…" : `${pendingSync} alteração(ões) aguardando sincronização`}</span>
+          {pendingSync > 0 && !isSyncing && <button type="button" className="whitespace-nowrap underline underline-offset-2" onClick={() => { setIsOnline(true); void syncPendingQueue(); }}>Tentar sincronizar</button>}
+        </div>
+      )}
       <aside
         className={`${drawer ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-30 flex w-72 shrink-0 flex-col overflow-y-auto border-r border-zinc-200 bg-[#fbfaff] px-5 pb-5 pt-[calc(1.25rem+env(safe-area-inset-top))] transition-transform dark:border-zinc-800 dark:bg-zinc-900 lg:fixed lg:inset-y-0 lg:left-0 lg:h-screen lg:translate-x-0`}
       >

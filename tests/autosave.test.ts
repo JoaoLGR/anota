@@ -37,14 +37,18 @@ describe("createDebouncedSaver", () => {
     vi.useRealTimers();
   });
 
-  it("propaga falhas de persistência sem perder o lote pendente", async () => {
+  it("mantém as alterações após falha e permite tentar novamente", async () => {
     vi.useFakeTimers();
-    const failure = vi.fn().mockRejectedValue(new Error("offline"));
-    const saver = createDebouncedSaver<{ title: string }>(failure, 800);
+    const save = vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(undefined);
+    const saver = createDebouncedSaver<{ title: string }>(save, 800);
     saver.schedule({ title: "Rascunho offline" });
     vi.advanceTimersByTime(800);
     await vi.runAllTimersAsync();
-    expect(failure).toHaveBeenCalledWith({ title: "Rascunho offline" });
+    expect(save).toHaveBeenCalledTimes(1);
+    await expect(saver.retry()).resolves.toBeUndefined();
+    expect(save).toHaveBeenNthCalledWith(2, { title: "Rascunho offline" });
     vi.useRealTimers();
   });
 });
